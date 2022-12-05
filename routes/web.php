@@ -16,23 +16,25 @@ use Illuminate\Support\Facades\Route;
 use App\Models\Task;
 use Illuminate\Http\Request;
 
-/**
-    * Show Task Dashboard
-    */
+// GENERAL
+Route::get('/home', function () {
+    return view('tasks', [
+        'tasks' => Task::orderBy('created_at', 'asc')->get()
+    ]);
+})->middleware('auth');
+
 Route::get('/', function () {
     error_log("INFO: get /");
     return view('tasks', [
         'tasks' => Task::orderBy('created_at', 'asc')->get()
     ]);
-});
+})->middleware('auth');
 
-/**
-    * Add New Task
-    */
+// ADD TASK
 Route::post('/task', function (Request $request) {
     error_log("INFO: post /task");
     $validator = Validator::make($request->all(), [
-        'name' => 'required|max:255',
+        'orderid' => 'required|max:255',
     ]);
 
     if ($validator->fails()) {
@@ -43,18 +45,60 @@ Route::post('/task', function (Request $request) {
     }
 
     $task = new Task;
-    $task->name = $request->name;
+    $task->orderid = $request->orderid;
+    $task->milling = $request->milling;
+    $task->drilling = $request->drilling;
+    $task->plant = $request->plant;           
     $task->save();
 
-    return redirect('/');
-});
+    //sending over Azure IoT Hub REST API
+    $curl = curl_init();
 
-/**
-    * Delete Task
-    */
+    $message = new stdClass();
+    $message->orderid = $request->orderid;
+    $message->milling = $request->milling;
+    $message->drilling = $request->drilling;
+    $message->plant = $request->plant;    
+    $payload = json_encode($message);
+    curl_setopt_array($curl, array(
+        CURLOPT_URL => "https://iotHubDeNayer.azure-devices.net/devices/Webapp/messages/events?api-version=2018-06-30",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => "",
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => array(
+            "authorization: SharedAccessSignature sr=iotHubDeNayer.azure-devices.net%2Fdevices%2FWebapp&sig=42HeIKhy%2FnS5%2F4svqcpDpU2lyii90lwca4d%2FsH3JZeY%3D&se=1670001558",
+        ),
+    ));
+    echo "Sending message: " . $payload . "\n";
+    $response = curl_exec($curl);
+    $err = curl_error($curl);
+    $httpcode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    if ($err) {
+        echo $err;
+        exit(1);
+    } else {
+        echo "IoT Hub responded to message with status: " . $httpcode . "\n";
+    }
+    
+    curl_close($curl);
+
+    return redirect('/');
+})->middleware('auth');
+
+// DELETE TASK
 Route::delete('/task/{id}', function ($id) {
     error_log('INFO: delete /task/'.$id);
     Task::findOrFail($id)->delete();
 
     return redirect('/');
-});
+})->middleware('auth');
+
+
+Auth::routes();
+
+
+
