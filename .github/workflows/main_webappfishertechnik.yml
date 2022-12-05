@@ -33,7 +33,7 @@ jobs:
 
       - name: Installation of laravel UI
         if: steps.check_files.outputs.files_exists == 'true'
-        run: composer require laravel/ui
+        run: composer require laravel/ui:^3.4 
 
       - name: Installation of MQTT client
         if: steps.check_files.outputs.files_exists == 'true'
